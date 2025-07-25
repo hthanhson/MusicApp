@@ -53,7 +53,6 @@ class NowPlayingActivity : AppCompatActivity(), NowPlayingView {
 
     override fun onResume() {
         super.onResume()
-        // Hide system notification while NowPlaying is visible
         startService(Intent(this, com.example.musicapp.service.MusicService::class.java).apply {
             action = com.example.musicapp.service.MusicService.ACTION_HIDE_NOTIFICATION
         })
@@ -62,7 +61,7 @@ class NowPlayingActivity : AppCompatActivity(), NowPlayingView {
 
     override fun onPause() {
         super.onPause()
-        // Show notification again if music still playing
+    
         startService(Intent(this, com.example.musicapp.service.MusicService::class.java).apply {
             action = com.example.musicapp.service.MusicService.ACTION_SHOW_NOTIFICATION
         })

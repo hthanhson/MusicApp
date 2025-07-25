@@ -19,7 +19,7 @@ import com.example.musicapp.model.Track
 class MusicNotificationManager(private val context: Context) {
     
     companion object {
-        // New channel id with LOW importance to suppress heads-up popups
+       
         const val CHANNEL_ID = "music_playback_silent"
         const val NOTIFICATION_ID = 1001
         const val ACTION_PLAY_PAUSE = "com.example.musicapp.ACTION_PLAY_PAUSE"

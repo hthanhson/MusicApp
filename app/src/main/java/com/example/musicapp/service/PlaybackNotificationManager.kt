@@ -75,8 +75,6 @@ class PlaybackNotificationManager(private val context: Context) {
             .setColorized(true)
             .setDeleteIntent(createPendingIntent(ACTION_CLOSE))
             .setFullScreenIntent(contentPendingIntent, false)
-
-        // Add action buttons (empty titles for icon-only)
         builder.addAction(
             R.drawable.ic_skip_previous,
             "",
@@ -96,7 +94,6 @@ class PlaybackNotificationManager(private val context: Context) {
             createPendingIntent(ACTION_NEXT)
         )
         
-        // Apply MediaStyle so system shows icon-only controls
         builder.setStyle(
             androidx.media.app.NotificationCompat.MediaStyle()
                 .setShowActionsInCompactView(0,1,2)

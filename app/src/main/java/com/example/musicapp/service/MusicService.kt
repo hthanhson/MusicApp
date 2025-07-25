@@ -25,7 +25,6 @@ class MusicService : Service() {
     private var isTracking = false
     private var suppressNotification = false
     
-    // Notification manager
     private lateinit var notificationManager: PlaybackNotificationManager
 
     companion object {
@@ -34,7 +33,6 @@ class MusicService : Service() {
         const val EXTRA_TRACK = "extra_track"
         const val EXTRA_IS_PLAYING = "extra_is_playing"
         
-        // Notification actions
         const val ACTION_TOGGLE_PLAYBACK = "com.example.musicapp.ACTION_TOGGLE_PLAYBACK"
         const val ACTION_PREVIOUS = "com.example.musicapp.ACTION_PREVIOUS"
         const val ACTION_NEXT = "com.example.musicapp.ACTION_NEXT"
