@@ -23,46 +23,54 @@ class MusicService : Service() {
     private var onTrackChangedListener: ((Track) -> Unit)? = null
     private val handler = Handler(Looper.getMainLooper())
     private var isTracking = false
-
-    private val progressUpdateRunnable = object : Runnable {
-        override fun run() {
-            mediaPlayer?.let { player ->
-                try {
-                    val isPlaying = player.isPlaying
-                    val currentPosition = player.currentPosition
-                    val totalDuration = player.duration
-
-                    Log.d("MusicService", "MediaPlayer state - isPlaying: $isPlaying, position: $currentPosition, duration: $totalDuration")
-
-                    if (isPlaying && totalDuration > 0) {
-                        onProgressUpdateListener?.invoke(currentPosition, totalDuration)
-                        sendBroadcast(Intent(ACTION_PLAYBACK_STATE_CHANGED).apply {
-                            putExtra(EXTRA_IS_PLAYING, true)
-                            putExtra(EXTRA_TRACK, currentTrack)
-                        })
-                    } else {
-                        Log.d("MusicService", "Skipping progress update - isPlaying: $isPlaying, duration: $totalDuration")
-                    }
-                } catch (e: Exception) {
-                    Log.e("MusicService", "Error updating progress: ${e.message}")
-                }
-            } ?: run {
-                Log.d("MusicService", "MediaPlayer is null")
-            }
-
-            if (isTracking) {
-                handler.postDelayed(this, 1000) 
-            } else {
-                Log.d("MusicService", "Tracking is disabled")
-            }
-        }
-    }
+    
+    // Notification manager
+    private lateinit var notificationManager: PlaybackNotificationManager
 
     companion object {
         const val ACTION_TRACK_CHANGED = "com.example.musicapp.ACTION_TRACK_CHANGED"
         const val ACTION_PLAYBACK_STATE_CHANGED = "com.example.musicapp.ACTION_PLAYBACK_STATE_CHANGED"
         const val EXTRA_TRACK = "extra_track"
         const val EXTRA_IS_PLAYING = "extra_is_playing"
+        
+        // Notification actions
+        const val ACTION_TOGGLE_PLAYBACK = "com.example.musicapp.ACTION_TOGGLE_PLAYBACK"
+        const val ACTION_PREVIOUS = "com.example.musicapp.ACTION_PREVIOUS"
+        const val ACTION_NEXT = "com.example.musicapp.ACTION_NEXT"
+        const val ACTION_STOP = "com.example.musicapp.ACTION_STOP"
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        notificationManager = PlaybackNotificationManager(this)
+        Log.d("MusicService", "Service created with fixed notification manager")
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        intent?.action?.let { action ->
+            Log.d("MusicService", "Received action: $action")
+            when (action) {
+                ACTION_TOGGLE_PLAYBACK -> {
+                    if (isPlaying()) {
+                        pauseTrack()
+                    } else {
+                        resumeTrack()
+                    }
+                }
+                ACTION_PREVIOUS -> {
+                    playPreviousTrack()
+                }
+                ACTION_NEXT -> {
+                    playNextTrack()
+                }
+                ACTION_STOP -> {
+                    stopPlayback()
+                    notificationManager.hideNotification()
+                    stopSelf()
+                }
+            }
+        }
+        return START_STICKY
     }
 
     inner class MusicBinder : Binder() {
@@ -106,6 +114,7 @@ class MusicService : Service() {
                 putExtra(EXTRA_IS_PLAYING, true)
                 putExtra(EXTRA_TRACK, track)
             })
+            updateNotification()
             return
         }
 
@@ -128,6 +137,7 @@ class MusicService : Service() {
                         putExtra(EXTRA_IS_PLAYING, true)
                         putExtra(EXTRA_TRACK, track)
                     })
+                    updateNotification()
                     Log.d("MusicService", "Sent ACTION_PLAYBACK_STATE_CHANGED broadcast - isPlaying: true")
                 }
                 setOnCompletionListener {
@@ -138,6 +148,7 @@ class MusicService : Service() {
                         putExtra(EXTRA_IS_PLAYING, false)
                         putExtra(EXTRA_TRACK, currentTrack)
                     })
+                    updateNotification()
                     playNextTrack()
                 }
                 setOnErrorListener { _, what, extra ->
@@ -174,6 +185,41 @@ class MusicService : Service() {
         handler.removeCallbacks(progressUpdateRunnable)
     }
 
+    private val progressUpdateRunnable = object : Runnable {
+        override fun run() {
+            mediaPlayer?.let { player ->
+                try {
+                    val isPlaying = player.isPlaying
+                    val currentPosition = player.currentPosition
+                    val totalDuration = player.duration
+
+                    Log.d("MusicService", "MediaPlayer state - isPlaying: $isPlaying, position: $currentPosition, duration: $totalDuration")
+
+                    if (isPlaying && totalDuration > 0) {
+                        onProgressUpdateListener?.invoke(currentPosition, totalDuration)
+                        updateNotification(currentPosition, totalDuration)
+                        sendBroadcast(Intent(ACTION_PLAYBACK_STATE_CHANGED).apply {
+                            putExtra(EXTRA_IS_PLAYING, true)
+                            putExtra(EXTRA_TRACK, currentTrack)
+                        })
+                    } else {
+                        Log.d("MusicService", "Skipping progress update - isPlaying: $isPlaying, duration: $totalDuration")
+                    }
+                } catch (e: Exception) {
+                    Log.e("MusicService", "Error updating progress: ${e.message}")
+                }
+            } ?: run {
+                Log.d("MusicService", "MediaPlayer is null")
+            }
+
+            if (isTracking) {
+                handler.postDelayed(this, 1000) 
+            } else {
+                Log.d("MusicService", "Tracking is disabled")
+            }
+        }
+    }
+
     private fun notifyTrackChanged(track: Track) {
         Log.d("MusicService", "Notifying track changed: ${track.title}")
         currentTrack = track
@@ -181,6 +227,7 @@ class MusicService : Service() {
         sendBroadcast(Intent(ACTION_TRACK_CHANGED).apply {
             putExtra(EXTRA_TRACK, track)
         })
+        updateNotification()
 //        sendBroadcast(intent)
     }
 
@@ -226,6 +273,7 @@ class MusicService : Service() {
                         putExtra(EXTRA_IS_PLAYING, false)
                         putExtra(EXTRA_TRACK, currentTrack)
                     })
+                    updateNotification()
                 } else {
                     Log.d("MusicService", "Track is already paused")
                 }
@@ -253,6 +301,7 @@ class MusicService : Service() {
                         putExtra(EXTRA_IS_PLAYING, true)
                         putExtra(EXTRA_TRACK, currentTrack)
                     })
+                    updateNotification()
                 } else {
                     Log.d("MusicService", "Track is already playing")
                 }
@@ -338,9 +387,30 @@ class MusicService : Service() {
         }
     }
 
+    private fun updateNotification(progressMs: Int? = null, durationMs: Int? = null) {
+        currentTrack?.let { track ->
+            val playing = isPlaying()
+            val progressPercent = if (progressMs != null && durationMs != null && durationMs > 0) {
+                (progressMs * 100 / durationMs)
+            } else 0
+
+            val notification = notificationManager.createNotification(track, playing, progressPercent)
+
+            if (playing) {
+                startForeground(PlaybackNotificationManager.NOTIFICATION_ID, notification)
+            } else {
+                notificationManager.updateNotification(track, false, progressPercent)
+                stopForeground(false)
+            }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         stopPlayback()
+        notificationManager.hideNotification()
+        stopForeground(true)
         handler.removeCallbacksAndMessages(null)
+        Log.d("MusicService", "Service destroyed, cleaned up notifications and foreground service")
     }
 }
