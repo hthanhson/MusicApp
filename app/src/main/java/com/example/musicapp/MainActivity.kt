@@ -5,7 +5,9 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.widget.Toast
@@ -27,6 +29,8 @@ class MainActivity : AppCompatActivity(), MainView {
     private var currentTrackIndex = -1
     private var tracks = mutableListOf<Track>()
     private var musicService: MusicService? = null
+    private var playPauseUpdateHandler: Handler? = null
+    private var playPauseUpdateRunnable: Runnable? = null
 
     private val trackAdapter = TrackAdapter(
         onItemClick = { track ->
@@ -54,30 +58,39 @@ class MainActivity : AppCompatActivity(), MainView {
 
     private val trackChangeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            Log.d("MainActivity", "Received broadcast: ${intent?.action}")
             when (intent?.action) {
                 MusicService.ACTION_TRACK_CHANGED -> {
                     val track = intent.getParcelableExtra<Track>(MusicService.EXTRA_TRACK)
                     track?.let {
-                        Log.d("MainActivity", "Received track change broadcast: ${it.title}")
+                        Log.d("MainActivity", "Track change broadcast: ${it.title}, id: ${it.id}")
                         runOnUiThread {
                             currentTrack = it
                             currentTrackIndex = tracks.indexOf(it)
+                            if (!tracks.contains(it)) {
+                                tracks.add(it)
+                            }
                             updateNowPlayingBar(it)
+                            updatePlayPauseButton(musicService?.isPlaying() == true)
                         }
+                    } ?: run {
+                        Log.e("MainActivity", "Track change broadcast received but track is null")
                     }
                 }
                 MusicService.ACTION_PLAYBACK_STATE_CHANGED -> {
                     val isPlaying = intent.getBooleanExtra(MusicService.EXTRA_IS_PLAYING, false)
                     val track = intent.getParcelableExtra<Track>(MusicService.EXTRA_TRACK)
+                    Log.d("MainActivity", "Playback state change - isPlaying: $isPlaying, track: ${track?.title}")
                     runOnUiThread {
-                        binding.playPauseButton.setImageResource(
-                            if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
-                        )
                         track?.let {
                             currentTrack = it
                             currentTrackIndex = tracks.indexOf(it)
+                            if (!tracks.contains(it)) {
+                                tracks.add(it)
+                            }
                             updateNowPlayingBar(it)
                         }
+                        updatePlayPauseButton(isPlaying)
                     }
                 }
             }
@@ -88,10 +101,24 @@ class MainActivity : AppCompatActivity(), MainView {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as MusicService.MusicBinder
             musicService = binder.getService()
+            Log.d("MainActivity", "MusicService connected")
             setupMusicService()
+            musicService?.getCurrentTrack()?.let { track ->
+                runOnUiThread {
+                    currentTrack = track
+                    currentTrackIndex = tracks.indexOf(track)
+                    updateNowPlayingBar(track)
+                    updatePlayPauseButton(musicService?.isPlaying() == true)
+                }
+            } ?: run {
+                runOnUiThread {
+                    binding.nowPlayingBar.visibility = View.GONE
+                    updatePlayPauseButton(false)
+                }
+            }
         }
-
         override fun onServiceDisconnected(name: ComponentName?) {
+            Log.d("MainActivity", "MusicService disconnected")
             musicService = null
         }
     }
@@ -101,7 +128,6 @@ class MainActivity : AppCompatActivity(), MainView {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Register broadcast receiver with flags
         val receiverFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             Context.RECEIVER_NOT_EXPORTED
         } else {
@@ -125,7 +151,6 @@ class MainActivity : AppCompatActivity(), MainView {
         setupSearchUI()
         setupNowPlayingBar()
 
-        // Bind to MusicService
         bindService(
             Intent(this, MusicService::class.java),
             serviceConnection,
@@ -135,22 +160,33 @@ class MainActivity : AppCompatActivity(), MainView {
 
     override fun onResume() {
         super.onResume()
-
-        // Sync with current track
-        musicService?.getCurrentTrack()?.let { track ->
-            currentTrack = track
-            currentTrackIndex = tracks.indexOf(track)
-            updateNowPlayingBar(track)
+        musicService?.let { service ->
+            service.getCurrentTrack()?.let { track ->
+                currentTrack = track
+                currentTrackIndex = tracks.indexOf(track)
+                updateNowPlayingBar(track)
+                updatePlayPauseButton(service.isPlaying())
+                Log.d("MainActivity", "onResume: Synced with track ${track.title}, isPlaying: ${service.isPlaying()}")
+            } ?: run {
+                binding.nowPlayingBar.visibility = View.GONE
+                updatePlayPauseButton(false)
+                Log.d("MainActivity", "onResume: No current track")
+            }
+        } ?: run {
+            Log.d("MainActivity", "MusicService not yet bound in onResume")
+            binding.nowPlayingBar.visibility = View.GONE
+            updatePlayPauseButton(false)
         }
+        startPlayPauseUpdate()
     }
 
     override fun onPause() {
         super.onPause()
+        stopPlayPauseUpdate()
     }
 
     override fun onStop() {
         super.onStop()
-        // Clear callbacks but keep the service running
         musicService?.setCallbacks(
             onCompletion = {},
             onPrepared = {},
@@ -178,17 +214,17 @@ class MainActivity : AppCompatActivity(), MainView {
         musicService?.setCallbacks(
             onCompletion = {
                 runOnUiThread {
-                    updatePlayPauseButton()
+                    updatePlayPauseButton(musicService?.isPlaying() == true)
                 }
             },
             onPrepared = {
                 runOnUiThread {
-                    updatePlayPauseButton()
+                    updatePlayPauseButton(musicService?.isPlaying() == true)
                 }
             },
             onProgressUpdate = { _, _ ->
                 runOnUiThread {
-                    updatePlayPauseButton()
+                    updatePlayPauseButton(musicService?.isPlaying() == true)
                 }
             },
             onTrackChanged = { track ->
@@ -197,6 +233,7 @@ class MainActivity : AppCompatActivity(), MainView {
                     currentTrack = track
                     currentTrackIndex = tracks.indexOf(track)
                     updateNowPlayingBar(track)
+                    updatePlayPauseButton(musicService?.isPlaying() == true)
                 }
             }
         )
@@ -236,8 +273,7 @@ class MainActivity : AppCompatActivity(), MainView {
             } else {
                 musicService?.resumeTrack()
             }
-            // Cập nhật UI ngay lập tức sau khi ấn nút
-            updatePlayPauseButton()
+            updatePlayPauseButton(musicService?.isPlaying() == true)
         }
 
         binding.closeButton.setOnClickListener {
@@ -254,15 +290,18 @@ class MainActivity : AppCompatActivity(), MainView {
             showError("Track không thể stream hoặc thiếu ID: ${track.title}")
             return
         }
+        if (musicService == null) {
+            showError("Dịch vụ âm nhạc chưa sẵn sàng, vui lòng thử lại")
+            return
+        }
 
         currentTrack = track
         currentTrackIndex = tracks.indexOf(track)
         binding.nowPlayingBar.visibility = View.VISIBLE
-        binding.playPauseButton.setImageResource(R.drawable.ic_pause)
+        updateNowPlayingBar(track)
 
         musicService?.setTracks(tracks)
         musicService?.playTrack(track)
-        updateNowPlayingBar(track)
 
         val intent = NowPlayingActivity.createIntent(this, track, tracks)
         nowPlayingLauncher.launch(intent)
@@ -273,12 +312,10 @@ class MainActivity : AppCompatActivity(), MainView {
         binding.nowPlayingBar.visibility = View.VISIBLE
         binding.nowPlayingTitle.text = track.title
         binding.nowPlayingArtist.text = track.artist.name
-        updatePlayPauseButton()
     }
 
-    private fun updatePlayPauseButton() {
+    private fun updatePlayPauseButton(isPlaying: Boolean) {
         try {
-            val isPlaying = musicService?.isPlaying() == true
             binding.playPauseButton.setImageResource(
                 if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
             )
@@ -286,6 +323,46 @@ class MainActivity : AppCompatActivity(), MainView {
         } catch (e: Exception) {
             Log.e("MainActivity", "Error updating play/pause button: ${e.message}")
         }
+    }
+
+    private fun startPlayPauseUpdate() {
+        stopPlayPauseUpdate()
+        playPauseUpdateHandler = Handler(Looper.getMainLooper())
+        playPauseUpdateRunnable = object : Runnable {
+            override fun run() {
+                try {
+                    musicService?.let { service ->
+                        val isPlaying = service.isPlaying()
+                        val currentServiceTrack = service.getCurrentTrack()
+                        runOnUiThread {
+                            currentServiceTrack?.let { track ->
+                                if (track != currentTrack) {
+                                    currentTrack = track
+                                    currentTrackIndex = tracks.indexOf(track)
+                                    if (!tracks.contains(track)) {
+                                        tracks.add(track)
+                                    }
+                                    updateNowPlayingBar(track)
+                                    Log.d("MainActivity", "Periodic check: Updated track to ${track.title}")
+                                }
+                            }
+                            updatePlayPauseButton(isPlaying)
+                            Log.d("MainActivity", "Periodic check - isPlaying: $isPlaying")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Error in play/pause update: ${e.message}")
+                }
+                playPauseUpdateHandler?.postDelayed(this, 500)
+            }
+        }
+        playPauseUpdateRunnable?.let { playPauseUpdateHandler?.post(it) }
+    }
+
+    private fun stopPlayPauseUpdate() {
+        playPauseUpdateRunnable?.let { playPauseUpdateHandler?.removeCallbacks(it) }
+        playPauseUpdateHandler = null
+        playPauseUpdateRunnable = null
     }
 
     private fun stopPlayback() {
@@ -306,8 +383,7 @@ class MainActivity : AppCompatActivity(), MainView {
     override fun showTracks(tracks: List<Track>) {
         this.tracks = tracks.toMutableList()
         trackAdapter.setTracks(tracks)
-        // Clear search after results are shown
-        binding.searchEditText.text?.clear()
+//        binding.searchEditText.text?.clear()
     }
 
     override fun showError(error: String) {

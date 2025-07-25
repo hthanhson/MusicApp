@@ -31,24 +31,126 @@ class NowPlayingActivity : AppCompatActivity() {
     private var currentTrackIndex = 0
     private var tracks = mutableListOf<Track>()
     private var currentTrack: Track? = null
+    private var playPauseUpdateHandler: Handler? = null
+    private var playPauseUpdateRunnable: Runnable? = null
 
+    private fun startPlayPauseUpdate() {
+        stopPlayPauseUpdate()
+        playPauseUpdateHandler = Handler(Looper.getMainLooper())
+        playPauseUpdateRunnable = object : Runnable {
+            override fun run() {
+                try {
+                    musicService?.let { service ->
+                        val isPlaying = service.isPlaying()
+                        Log.d("NowPlayingActivity", "Periodic check - isPlaying: $isPlaying")
+                        runOnUiThread {
+                            updatePlayPauseButton(isPlaying)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("NowPlayingActivity", "Error in play/pause update: ${e.message}")
+                }
+                playPauseUpdateHandler?.postDelayed(this, 500)
+            }
+        }
+        playPauseUpdateRunnable?.let { playPauseUpdateHandler?.post(it) }
+    }
+
+    private fun stopPlayPauseUpdate() {
+        playPauseUpdateRunnable?.let { playPauseUpdateHandler?.removeCallbacks(it) }
+        playPauseUpdateHandler = null
+        playPauseUpdateRunnable = null
+    }
+//    private val trackChangeReceiver = object : BroadcastReceiver() {
+//        override fun onReceive(context: Context?, intent: Intent?) {
+//            when (intent?.action) {
+//                MusicService.ACTION_TRACK_CHANGED -> {
+//                    val track = intent.getParcelableExtra<Track>(MusicService.EXTRA_TRACK)
+//                    track?.let {
+//                        Log.d("NowPlayingActivity", "Received track change: ${it.title}")
+//                        currentTrack = it
+//                        currentTrackIndex = tracks.indexOf(it)
+//                        if (!tracks.contains(it)) {
+//                            tracks.add(it)
+//                        }
+//                        runOnUiThread {
+//                            updateTrackUI(it)
+//                            updatePlayPauseButton(musicService?.isPlaying() == true) // Kiểm tra trạng thái thực tế
+//                            binding.seekBar.progress = 0
+//                            binding.currentTimeTextView.text = "00:00"
+//                            val duration = musicService?.getDuration() ?: 0
+//                            binding.totalTimeTextView.text = formatDuration(duration.toLong())
+//                        }
+//                    }
+//                }
+//                MusicService.ACTION_PLAYBACK_STATE_CHANGED -> {
+//                    val isPlaying = intent.getBooleanExtra(MusicService.EXTRA_IS_PLAYING, false)
+//                    val track = intent.getParcelableExtra<Track>(MusicService.EXTRA_TRACK)
+//                    Log.d("NowPlayingActivity", "Received playback state change - isPlaying: $isPlaying")
+//                    track?.let {
+//                        currentTrack = it
+//                        currentTrackIndex = tracks.indexOf(it)
+//                        if (!tracks.contains(it)) {
+//                            tracks.add(it)
+//                        }
+//                        runOnUiThread {
+//                            updateTrackUI(it)
+//                        }
+//                    }
+//                    runOnUiThread {
+//                        updatePlayPauseButton(isPlaying)
+//                    }
+//                }
+//            }
+//        }
+//    }
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as MusicService.MusicBinder
+            musicService = binder.getService()
+            Log.d("NowPlayingActivity", "MusicService connected")
+            setupMusicService()
+
+            musicService?.getCurrentTrack()?.let { serviceTrack ->
+                currentTrack = serviceTrack
+                currentTrackIndex = tracks.indexOf(serviceTrack)
+                runOnUiThread {
+                    updateTrackUI(serviceTrack)
+                    updatePlayPauseButton(musicService?.isPlaying() == true)
+                }
+            } ?: run {
+                currentTrack?.let { track ->
+                    musicService?.setTracks(tracks)
+                    musicService?.playTrack(track)
+                    runOnUiThread {
+                        updateTrackUI(track)
+                        updatePlayPauseButton(false)
+                    }
+                }
+            }
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            Log.d("NowPlayingActivity", "MusicService disconnected")
+            musicService = null
+        }
+    }
     private val trackChangeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            Log.d("NowPlayingActivity", "Received broadcast: ${intent?.action}")
             when (intent?.action) {
                 MusicService.ACTION_TRACK_CHANGED -> {
                     val track = intent.getParcelableExtra<Track>(MusicService.EXTRA_TRACK)
                     track?.let {
-                        Log.d("NowPlayingActivity", "Received track change: ${it.title}")
+                        Log.d("NowPlayingActivity", "Track change: ${it.title}")
                         currentTrack = it
                         currentTrackIndex = tracks.indexOf(it)
-                        // Update tracks list if needed
                         if (!tracks.contains(it)) {
                             tracks.add(it)
                         }
                         runOnUiThread {
                             updateTrackUI(it)
-                            updatePlayPauseButton(true) // New track should show pause
-                            // Reset seekbar and time
+                            updatePlayPauseButton(musicService?.isPlaying() == true)
                             binding.seekBar.progress = 0
                             binding.currentTimeTextView.text = "00:00"
                             val duration = musicService?.getDuration() ?: 0
@@ -59,63 +161,17 @@ class NowPlayingActivity : AppCompatActivity() {
                 MusicService.ACTION_PLAYBACK_STATE_CHANGED -> {
                     val isPlaying = intent.getBooleanExtra(MusicService.EXTRA_IS_PLAYING, false)
                     val track = intent.getParcelableExtra<Track>(MusicService.EXTRA_TRACK)
-                    Log.d("NowPlayingActivity", "Received playback state change - isPlaying: $isPlaying")
+                    Log.d("NowPlayingActivity", "Playback state change - isPlaying: $isPlaying, track: ${track?.title}")
                     track?.let {
                         currentTrack = it
                         currentTrackIndex = tracks.indexOf(it)
-                        // Update tracks list if needed
                         if (!tracks.contains(it)) {
                             tracks.add(it)
                         }
+                        runOnUiThread {
+                            updateTrackUI(it)
+                        }
                     }
-                    runOnUiThread {
-                        track?.let { updateTrackUI(it) }
-                        updatePlayPauseButton(isPlaying)
-                    }
-                }
-            }
-        }
-    }
-
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as MusicService.MusicBinder
-            musicService = binder.getService()
-            setupMusicService()
-
-            musicService?.getCurrentTrack()?.let { serviceTrack ->
-                currentTrack = serviceTrack
-                currentTrackIndex = tracks.indexOf(serviceTrack)
-
-                runOnUiThread {
-                    updateTrackUI(serviceTrack)
-
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        val isActuallyPlaying = musicService?.isPlaying() == true
-                        updatePlayPauseButton(isActuallyPlaying)
-                        Log.d("NowPlayingActivity", "Delayed check - isPlaying: $isActuallyPlaying")
-                    }, 300)
-                }
-            } ?: run {
-                currentTrack?.let { track ->
-                    musicService?.setTracks(tracks)
-                    musicService?.playTrack(track)
-                    runOnUiThread {
-                        updateTrackUI(track)
-                    }
-                }
-            }
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            musicService = null
-        }
-    }
-    private val playbackReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            when (intent?.action) {
-                MusicService.ACTION_PLAYBACK_STATE_CHANGED -> {
-                    val isPlaying = intent.getBooleanExtra(MusicService.EXTRA_IS_PLAYING, false)
                     runOnUiThread {
                         updatePlayPauseButton(isPlaying)
                     }
@@ -208,14 +264,13 @@ class NowPlayingActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        
-        // Re-register receiver
+
         val receiverFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             Context.RECEIVER_NOT_EXPORTED
         } else {
             0
         }
-        
+
         try {
             registerReceiver(
                 trackChangeReceiver,
@@ -229,17 +284,23 @@ class NowPlayingActivity : AppCompatActivity() {
             Log.e("NowPlayingActivity", "Error registering receiver: ${e.message}")
         }
 
-        // Sync with current track
-        musicService?.getCurrentTrack()?.let { track ->
-            currentTrack = track
-            currentTrackIndex = tracks.indexOf(track)
-            updateTrackUI(track)
-            updatePlayPauseButton(musicService?.isPlaying() == true)
+        musicService?.let { service ->
+            service.getCurrentTrack()?.let { track ->
+                currentTrack = track
+                currentTrackIndex = tracks.indexOf(track)
+                updateTrackUI(track)
+                updatePlayPauseButton(service.isPlaying())
+            } ?: run {
+                updatePlayPauseButton(false)
+            }
+        } ?: run {
+            Log.d("NowPlayingActivity", "MusicService not yet bound in onResume")
+            updatePlayPauseButton(false)
         }
-        
-        startProgressUpdate()
-    }
 
+        startProgressUpdate()
+        startPlayPauseUpdate()
+    }
 override fun onPause() {
         super.onPause()
         try {

@@ -102,11 +102,10 @@ class MusicService : Service() {
     }
 
     fun playTrack(track: Track) {
-        Log.d("MusicService", "Starting playback of track: ${track.title}")
+        Log.d("MusicService", "Starting playback of track: ${track.title}, id: ${track.id}")
 
         if (track.id == currentTrack?.id && mediaPlayer?.isPlaying == true) {
             Log.d("MusicService", "Track is already playing")
-            // Still send playback state to sync UI
             sendBroadcast(Intent(ACTION_PLAYBACK_STATE_CHANGED).apply {
                 putExtra(EXTRA_IS_PLAYING, true)
                 putExtra(EXTRA_TRACK, track)
@@ -118,8 +117,7 @@ class MusicService : Service() {
         currentTrack = track
         currentTrackIndex = tracks.indexOf(track)
 
-        // Notify track change immediately to update UI
-        notifyTrackChanged(track)
+        notifyTrackChanged(track) // Gửi ACTION_TRACK_CHANGED trước khi chuẩn bị MediaPlayer
 
         val streamUrl = "https://discoveryprovider.audius.co/v1/tracks/${track.id}/stream?app_name=MyMusicApp"
         try {
@@ -130,11 +128,11 @@ class MusicService : Service() {
                     start()
                     startTracking()
                     onPreparedListener?.invoke()
-                    // Send playback state change after MediaPlayer is ready
                     sendBroadcast(Intent(ACTION_PLAYBACK_STATE_CHANGED).apply {
                         putExtra(EXTRA_IS_PLAYING, true)
                         putExtra(EXTRA_TRACK, track)
                     })
+                    Log.d("MusicService", "Sent ACTION_PLAYBACK_STATE_CHANGED broadcast - isPlaying: true")
                 }
                 setOnCompletionListener {
                     Log.d("MusicService", "Track completed")
@@ -184,14 +182,10 @@ class MusicService : Service() {
         Log.d("MusicService", "Notifying track changed: ${track.title}")
         currentTrack = track
         onTrackChangedListener?.invoke(track)
-        // Send both track changed and playback state changed broadcasts
         sendBroadcast(Intent(ACTION_TRACK_CHANGED).apply {
             putExtra(EXTRA_TRACK, track)
         })
-        sendBroadcast(Intent(ACTION_PLAYBACK_STATE_CHANGED).apply {
-            putExtra(EXTRA_IS_PLAYING, false)
-            putExtra(EXTRA_TRACK, track)
-        })
+//        sendBroadcast(intent)
     }
 
     fun playNextTrack() {
@@ -234,7 +228,6 @@ class MusicService : Service() {
                     player.pause()
                     stopTracking()
                     onProgressUpdateListener?.invoke(player.currentPosition, player.duration)
-                    // Notify state change immediately
                     sendBroadcast(Intent(ACTION_PLAYBACK_STATE_CHANGED).apply {
                         putExtra(EXTRA_IS_PLAYING, false)
                         putExtra(EXTRA_TRACK, currentTrack)
@@ -244,6 +237,10 @@ class MusicService : Service() {
                 }
             } ?: run {
                 Log.e("MusicService", "Cannot pause - MediaPlayer is null")
+                sendBroadcast(Intent(ACTION_PLAYBACK_STATE_CHANGED).apply {
+                    putExtra(EXTRA_IS_PLAYING, false)
+                    putExtra(EXTRA_TRACK, currentTrack)
+                })
             }
         } catch (e: Exception) {
             Log.e("MusicService", "Error pausing track: ${e.message}")
@@ -258,7 +255,6 @@ class MusicService : Service() {
                     player.start()
                     startTracking()
                     onProgressUpdateListener?.invoke(player.currentPosition, player.duration)
-                    // Notify state change immediately
                     sendBroadcast(Intent(ACTION_PLAYBACK_STATE_CHANGED).apply {
                         putExtra(EXTRA_IS_PLAYING, true)
                         putExtra(EXTRA_TRACK, currentTrack)
@@ -268,6 +264,10 @@ class MusicService : Service() {
                 }
             } ?: run {
                 Log.e("MusicService", "Cannot resume - MediaPlayer is null")
+                sendBroadcast(Intent(ACTION_PLAYBACK_STATE_CHANGED).apply {
+                    putExtra(EXTRA_IS_PLAYING, false)
+                    putExtra(EXTRA_TRACK, currentTrack)
+                })
             }
         } catch (e: Exception) {
             Log.e("MusicService", "Error resuming track: ${e.message}")
@@ -289,8 +289,10 @@ class MusicService : Service() {
 
     fun isPlaying(): Boolean {
         return try {
-            mediaPlayer?.isPlaying == true
-        } catch (e: Exception) {
+            val isPlaying = mediaPlayer?.isPlaying == true
+            Log.d("MusicService", "isPlaying called, result: $isPlaying")
+            isPlaying
+        } catch (e: IllegalStateException) {
             Log.e("MusicService", "Error checking isPlaying: ${e.message}")
             false
         }
