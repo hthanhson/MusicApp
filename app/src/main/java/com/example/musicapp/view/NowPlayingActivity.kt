@@ -1,195 +1,23 @@
 package com.example.musicapp.view
 
-import android.content.*
+import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.media.AudioManager
-import android.os.Build
 import android.os.Bundle
-import android.os.IBinder
-import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import android.widget.SeekBar
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.musicapp.R
 import com.example.musicapp.databinding.ActivityNowPlayingBinding
 import com.example.musicapp.model.Track
-import com.example.musicapp.receiver.TrackChangeReceiver
-import com.example.musicapp.service.MusicService
-import java.util.concurrent.TimeUnit
-import android.widget.Toast
-import android.os.Handler
-import android.os.Looper
+import com.example.musicapp.presenter.NowPlayingPresenter
 
-class NowPlayingActivity : AppCompatActivity() {
+class NowPlayingActivity : AppCompatActivity(), NowPlayingView {
     private lateinit var binding: ActivityNowPlayingBinding
-    private lateinit var audioManager: AudioManager
-    private var musicService: MusicService? = null
-    private var isUserSeeking = false
-    private var isShuffleEnabled = false
-    private var isFullscreen = false
-    private var currentTrackIndex = 0
-    private var tracks = mutableListOf<Track>()
-    private var currentTrack: Track? = null
-    private var playPauseUpdateHandler: Handler? = null
-    private var playPauseUpdateRunnable: Runnable? = null
-
-    private fun startPlayPauseUpdate() {
-        stopPlayPauseUpdate()
-        playPauseUpdateHandler = Handler(Looper.getMainLooper())
-        playPauseUpdateRunnable = object : Runnable {
-            override fun run() {
-                try {
-                    musicService?.let { service ->
-                        val isPlaying = service.isPlaying()
-                        Log.d("NowPlayingActivity", "Periodic check - isPlaying: $isPlaying")
-                        runOnUiThread {
-                            updatePlayPauseButton(isPlaying)
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("NowPlayingActivity", "Error in play/pause update: ${e.message}")
-                }
-                playPauseUpdateHandler?.postDelayed(this, 500)
-            }
-        }
-        playPauseUpdateRunnable?.let { playPauseUpdateHandler?.post(it) }
-    }
-
-    private fun stopPlayPauseUpdate() {
-        playPauseUpdateRunnable?.let { playPauseUpdateHandler?.removeCallbacks(it) }
-        playPauseUpdateHandler = null
-        playPauseUpdateRunnable = null
-    }
-//    private val trackChangeReceiver = object : BroadcastReceiver() {
-//        override fun onReceive(context: Context?, intent: Intent?) {
-//            when (intent?.action) {
-//                MusicService.ACTION_TRACK_CHANGED -> {
-//                    val track = intent.getParcelableExtra<Track>(MusicService.EXTRA_TRACK)
-//                    track?.let {
-//                        Log.d("NowPlayingActivity", "Received track change: ${it.title}")
-//                        currentTrack = it
-//                        currentTrackIndex = tracks.indexOf(it)
-//                        if (!tracks.contains(it)) {
-//                            tracks.add(it)
-//                        }
-//                        runOnUiThread {
-//                            updateTrackUI(it)
-//                            updatePlayPauseButton(musicService?.isPlaying() == true) // Kiểm tra trạng thái thực tế
-//                            binding.seekBar.progress = 0
-//                            binding.currentTimeTextView.text = "00:00"
-//                            val duration = musicService?.getDuration() ?: 0
-//                            binding.totalTimeTextView.text = formatDuration(duration.toLong())
-//                        }
-//                    }
-//                }
-//                MusicService.ACTION_PLAYBACK_STATE_CHANGED -> {
-//                    val isPlaying = intent.getBooleanExtra(MusicService.EXTRA_IS_PLAYING, false)
-//                    val track = intent.getParcelableExtra<Track>(MusicService.EXTRA_TRACK)
-//                    Log.d("NowPlayingActivity", "Received playback state change - isPlaying: $isPlaying")
-//                    track?.let {
-//                        currentTrack = it
-//                        currentTrackIndex = tracks.indexOf(it)
-//                        if (!tracks.contains(it)) {
-//                            tracks.add(it)
-//                        }
-//                        runOnUiThread {
-//                            updateTrackUI(it)
-//                        }
-//                    }
-//                    runOnUiThread {
-//                        updatePlayPauseButton(isPlaying)
-//                    }
-//                }
-//            }
-//        }
-//    }
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as MusicService.MusicBinder
-            musicService = binder.getService()
-            Log.d("NowPlayingActivity", "MusicService connected")
-            setupMusicService()
-
-            musicService?.getCurrentTrack()?.let { serviceTrack ->
-                currentTrack = serviceTrack
-                currentTrackIndex = tracks.indexOf(serviceTrack)
-                runOnUiThread {
-                    updateTrackUI(serviceTrack)
-                    updatePlayPauseButton(musicService?.isPlaying() == true)
-                }
-            } ?: run {
-                currentTrack?.let { track ->
-                    musicService?.setTracks(tracks)
-                    musicService?.playTrack(track)
-                    runOnUiThread {
-                        updateTrackUI(track)
-                        updatePlayPauseButton(false)
-                    }
-                }
-            }
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            Log.d("NowPlayingActivity", "MusicService disconnected")
-            musicService = null
-        }
-    }
-    private val trackChangeReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            Log.d("NowPlayingActivity", "Received broadcast: ${intent?.action}")
-            when (intent?.action) {
-                MusicService.ACTION_TRACK_CHANGED -> {
-                    val track = intent.getParcelableExtra<Track>(MusicService.EXTRA_TRACK)
-                    track?.let {
-                        Log.d("NowPlayingActivity", "Track change: ${it.title}")
-                        currentTrack = it
-                        currentTrackIndex = tracks.indexOf(it)
-                        if (!tracks.contains(it)) {
-                            tracks.add(it)
-                        }
-                        runOnUiThread {
-                            updateTrackUI(it)
-                            updatePlayPauseButton(musicService?.isPlaying() == true)
-                            binding.seekBar.progress = 0
-                            binding.currentTimeTextView.text = "00:00"
-                            val duration = musicService?.getDuration() ?: 0
-                            binding.totalTimeTextView.text = formatDuration(duration.toLong())
-                        }
-                    }
-                }
-                MusicService.ACTION_PLAYBACK_STATE_CHANGED -> {
-                    val isPlaying = intent.getBooleanExtra(MusicService.EXTRA_IS_PLAYING, false)
-                    val track = intent.getParcelableExtra<Track>(MusicService.EXTRA_TRACK)
-                    Log.d("NowPlayingActivity", "Playback state change - isPlaying: $isPlaying, track: ${track?.title}")
-                    track?.let {
-                        currentTrack = it
-                        currentTrackIndex = tracks.indexOf(it)
-                        if (!tracks.contains(it)) {
-                            tracks.add(it)
-                        }
-                        runOnUiThread {
-                            updateTrackUI(it)
-                        }
-                    }
-                    runOnUiThread {
-                        updatePlayPauseButton(isPlaying)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun startPlayback() {
-        currentTrack()?.let { track ->
-            Log.d("NowPlayingActivity", "Starting playback of track: ${track.title}")
-            musicService?.setTracks(tracks)
-            musicService?.playTrack(track)
-            // Update UI immediately
-            updatePlayPauseButton(true)
-            updateTrackUI(track)
-        }
-    }
+    private lateinit var presenter: NowPlayingPresenter
 
     companion object {
         private const val EXTRA_TRACK = "extra_track"
@@ -207,41 +35,12 @@ class NowPlayingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityNowPlayingBinding.inflate(layoutInflater)
         setContentView(binding.root)
-//        val filter = IntentFilter(MusicService.ACTION_PLAYBACK_STATE_CHANGED)
-//        registerReceiver(playbackReceiver, filter)
-        // Register broadcast receiver with flags
-        val receiverFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            Context.RECEIVER_NOT_EXPORTED
-        } else {
-            0
-        }
 
-        // Register receiver before initializing UI
-        registerReceiver(
-            trackChangeReceiver,
-            IntentFilter().apply {
-                addAction(MusicService.ACTION_TRACK_CHANGED)
-                addAction(MusicService.ACTION_PLAYBACK_STATE_CHANGED)
-            },
-            receiverFlags
-        )
-
-        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        presenter = NowPlayingPresenter(this, this)
 
         val track = intent.getParcelableExtra<Track>(EXTRA_TRACK)
         val tracksList = intent.getParcelableArrayListExtra<Track>(EXTRA_TRACKS)
 
-        if (track == null || tracksList == null) {
-            finish()
-            return
-        }
-
-        tracks = tracksList.toMutableList()
-        currentTrack = track
-        currentTrackIndex = tracks.indexOf(track)
-
-        // Initialize UI first
-        updateTrackUI(track)
         setupControls()
         setupSeekBar()
         setupVolumeControl()
@@ -251,192 +50,83 @@ class NowPlayingActivity : AppCompatActivity() {
             finish()
         }
 
-        // Start progress update immediately
-        startProgressUpdate()
-
-        // Bind to MusicService
-        bindService(
-            Intent(this, MusicService::class.java),
-            serviceConnection,
-            Context.BIND_AUTO_CREATE
-        )
+        presenter.onCreate(track, tracksList)
     }
 
     override fun onResume() {
         super.onResume()
-
-        val receiverFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            Context.RECEIVER_NOT_EXPORTED
-        } else {
-            0
-        }
-
-        try {
-            registerReceiver(
-                trackChangeReceiver,
-                IntentFilter().apply {
-                    addAction(MusicService.ACTION_TRACK_CHANGED)
-                    addAction(MusicService.ACTION_PLAYBACK_STATE_CHANGED)
-                },
-                receiverFlags
-            )
-        } catch (e: Exception) {
-            Log.e("NowPlayingActivity", "Error registering receiver: ${e.message}")
-        }
-
-        musicService?.let { service ->
-            service.getCurrentTrack()?.let { track ->
-                currentTrack = track
-                currentTrackIndex = tracks.indexOf(track)
-                updateTrackUI(track)
-                updatePlayPauseButton(service.isPlaying())
-            } ?: run {
-                updatePlayPauseButton(false)
-            }
-        } ?: run {
-            Log.d("NowPlayingActivity", "MusicService not yet bound in onResume")
-            updatePlayPauseButton(false)
-        }
-
-        startProgressUpdate()
-        startPlayPauseUpdate()
+        presenter.onResume()
     }
-override fun onPause() {
+
+    override fun onPause() {
         super.onPause()
-        try {
-            unregisterReceiver(trackChangeReceiver)
-        } catch (e: Exception) {
-            Log.e("NowPlayingActivity", "Error unregistering receiver: ${e.message}")
-        }
+        presenter.onPause()
     }
 
-override fun onStop() {
+    override fun onStop() {
         super.onStop()
-        stopProgressUpdate()
+        presenter.onStop()
     }
 
-private var progressUpdateHandler: Handler? = null
-private var progressUpdateRunnable: Runnable? = null
-
-private fun startProgressUpdate() {
-        stopProgressUpdate() // Clear any existing updates
-        
-        progressUpdateHandler = Handler(Looper.getMainLooper())
-        progressUpdateRunnable = object : Runnable {
-            override fun run() {
-                if (!isFinishing && !isUserSeeking) {
-                    try {
-                        musicService?.let { service ->
-                            val position = service.getCurrentPosition()
-                            val duration = service.getDuration()
-
-                            if (duration > 0) {
-                                val progress = ((position.toFloat() / duration.toFloat()) * 1000).toInt()
-                                binding.seekBar.progress = progress
-                                binding.currentTimeTextView.text = formatDuration(position.toLong())
-                                binding.totalTimeTextView.text = formatDuration(duration.toLong())
-                            }
-
-                            // Also check if we need to update the current track
-                            service.getCurrentTrack()?.let { currentTrackFromService ->
-                                if (currentTrack?.id != currentTrackFromService.id) {
-                                    currentTrack = currentTrackFromService
-                                    currentTrackIndex = tracks.indexOf(currentTrackFromService)
-                                    updateTrackUI(currentTrackFromService)
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e("NowPlayingActivity", "Error in progress update: ${e.message}")
-                    }
-                }
-                progressUpdateHandler?.postDelayed(this, 100)
-            }
-        }
-        progressUpdateRunnable?.let {
-            progressUpdateHandler?.post(it)
-        }
-    }
-
-private fun stopProgressUpdate() {
-        progressUpdateRunnable?.let {
-            progressUpdateHandler?.removeCallbacks(it)
-        }
-        progressUpdateHandler = null
-        progressUpdateRunnable = null
-    }
-
-override fun onDestroy() {
+    override fun onDestroy() {
         super.onDestroy()
-        stopProgressUpdate()
-        try {
-            unregisterReceiver(trackChangeReceiver)
-        } catch (e: Exception) {
-            Log.e("NowPlayingActivity", "Error unregistering receiver: ${e.message}")
-        }
-        try {
-            unbindService(serviceConnection)
-        } catch (e: Exception) {
-            Log.e("NowPlayingActivity", "Error unbinding service: ${e.message}")
-        }
-        musicService = null
+        presenter.onDestroy()
     }
 
-    private fun setupMusicService() {
-        musicService?.setCallbacks(
-            onCompletion = {
-                runOnUiThread {
-                    binding.seekBar.progress = 0
-                    binding.currentTimeTextView.text = "00:00"
-                    updatePlayPauseButton(false)
-                }
-            },
-            onPrepared = {
-                runOnUiThread {
-                    val duration = musicService?.getDuration() ?: 0
-                    if (duration > 0) {
-                        binding.totalTimeTextView.text = formatDuration(duration.toLong())
-                    }
-                    updatePlayPauseButton(true)
-                }
-            },
-            onProgressUpdate = { position, duration ->
-                if (!isFinishing && !isUserSeeking) {
-                    runOnUiThread {
-                        if (duration > 0) {
-                            val progress = ((position.toFloat() / duration.toFloat()) * 1000).toInt().coerceIn(0, 1000)
-                            binding.seekBar.progress = progress
-                            binding.currentTimeTextView.text = formatDuration(position.toLong())
-                            binding.totalTimeTextView.text = formatDuration(duration.toLong())
-                        }
-                    }
-                }
-            },
-            onTrackChanged = { track ->
-                runOnUiThread {
-                    currentTrackIndex = tracks.indexOf(track)
-                    updateTrackUI(track)
-                    updatePlayPauseButton(musicService?.isPlaying() == true)
-                    // Update tracks list if needed
-                    if (!tracks.contains(track)) {
-                        tracks.add(track)
-                    }
-                }
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Handle fullscreen mode if needed
+    }
+
+    override fun onBackPressed() {
+        presenter.onBackPressed()
+    }
+
+    private fun setupControls() {
+        binding.playPauseButton.setOnClickListener {
+            presenter.onPlayPauseClicked()
+        }
+
+        binding.previousButton.setOnClickListener {
+            presenter.onPreviousClicked()
+        }
+
+        binding.nextButton.setOnClickListener {
+            presenter.onNextClicked()
+        }
+
+        binding.shuffleButton.setOnClickListener {
+            presenter.onShuffleClicked()
+        }
+
+        binding.repeatButton.setOnClickListener {
+            presenter.onRepeatClicked()
+        }
+
+        binding.volumeButton.setOnClickListener {
+            presenter.onVolumeToggled()
+        }
+    }
+
+    private fun setupSeekBar() {
+        binding.seekBar.max = 1000
+        binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                presenter.onSeekBarChanged(progress, fromUser)
             }
-        )
-    }
 
-    private fun setupUI(track: Track) {
-        binding.titleTextView.text = track.title
-        binding.trackTitleTextView.text = track.title
-        binding.artistTextView.text = track.artist.name
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                presenter.onSeekBarStartTracking()
+            }
 
-        binding.backButton.setOnClickListener {
-            finish()
-        }
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                seekBar?.let { presenter.onSeekBarStopTracking(it.progress) }
+            }
+        })
     }
 
     private fun setupVolumeControl() {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
         binding.volumeSeekBar.max = maxVolume
@@ -445,11 +135,7 @@ override fun onDestroy() {
         binding.volumeSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
-                    audioManager.setStreamVolume(
-                        AudioManager.STREAM_MUSIC,
-                        progress,
-                        0
-                    )
+                    presenter.onVolumeChanged(progress)
                 }
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
@@ -457,178 +143,47 @@ override fun onDestroy() {
         })
     }
 
-    private fun setupControls() {
-        binding.playPauseButton.setOnClickListener {
-            try {
-                val isPlaying = musicService?.isPlaying() == true
-                Log.d("NowPlayingActivity", "Play/Pause clicked, current state: $isPlaying")
-                if (isPlaying) {
-                    musicService?.pauseTrack()
-                    updatePlayPauseButton(false)
-                } else {
-                    musicService?.resumeTrack()
-                    updatePlayPauseButton(true)
-                }
-            } catch (e: Exception) {
-                Log.e("NowPlayingActivity", "Error handling play/pause: ${e.message}")
-            }
-        }
-
-        binding.previousButton.setOnClickListener {
-            musicService?.playPreviousTrack()
-        }
-
-        binding.nextButton.setOnClickListener {
-            musicService?.playNextTrack()
-        }
-
-        binding.shuffleButton.setOnClickListener {
-            isShuffleEnabled = !isShuffleEnabled
-            musicService?.setShuffleEnabled(isShuffleEnabled)
-            binding.shuffleButton.alpha = if (isShuffleEnabled) 1f else 0.5f
-            binding.shuffleButton.setBackgroundResource(
-                if (isShuffleEnabled) R.drawable.shuffle_active_background else android.R.color.transparent
-            )
-        }
-
-        binding.repeatButton.setOnClickListener {
-            Toast.makeText(this, "Repeat functionality coming soon", Toast.LENGTH_SHORT).show()
-        }
-
-        binding.volumeButton.setOnClickListener {
-            val isMuted = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
-            if (isMuted) {
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, binding.volumeSeekBar.progress, 0)
-                binding.volumeButton.setImageResource(R.drawable.ic_volume)
-            } else {
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
-                binding.volumeButton.setImageResource(R.drawable.ic_volume_off)
-            }
-            binding.volumeSeekBar.progress = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-        }
-    }
-
-    private fun setupSeekBar() {
-        binding.seekBar.max = 1000
-        binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) {
-                    try {
-                        val duration = musicService?.getDuration() ?: 0
-                        if (duration > 0) {
-                            val position = ((progress.toFloat() / 1000f) * duration).toLong()
-                            binding.currentTimeTextView.text = formatDuration(position)
-                            Log.d("NowPlayingActivity", "User dragging - progress: $progress, time: ${formatDuration(position)}")
-                        }
-                    } catch (e: Exception) {
-                        Log.e("NowPlayingActivity", "Error in onProgressChanged: ${e.message}")
-                        e.printStackTrace()
-                    }
-                }
-            }
-
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                isUserSeeking = true
-                Log.d("NowPlayingActivity", "User started seeking")
-            }
-
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                try {
-                    seekBar?.let { bar ->
-                        val duration = musicService?.getDuration() ?: 0
-                        if (duration > 0) {
-                            val position = ((bar.progress.toFloat() / 1000f) * duration).toInt()
-                            musicService?.seekTo(position)
-                            Log.d("NowPlayingActivity", "User seeked to: ${formatDuration(position.toLong())}")
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("NowPlayingActivity", "Error in onStopTrackingTouch: ${e.message}")
-                    e.printStackTrace()
-                } finally {
-                    isUserSeeking = false
-                    Log.d("NowPlayingActivity", "User finished seeking")
-                }
-            }
-        })
-    }
-
-    private fun currentTrack(): Track? {
-        return if (currentTrackIndex in tracks.indices) {
-            tracks[currentTrackIndex]
-        } else null
-    }
-
-    private fun playNextTrack() {
-        Log.d("NowPlayingActivity", "Playing next track")
-        musicService?.playNextTrack()
-    }
-
-    private fun updateTrackUI(track: Track) {
-        Log.d("NowPlayingActivity", "Updating UI for track: ${track.title}")
+    override fun updateTrackUI(track: Track) {
         binding.titleTextView.text = track.title
         binding.trackTitleTextView.text = track.title
         binding.artistTextView.text = track.artist.name
-        binding.seekBar.progress = 0
-        binding.currentTimeTextView.text = "00:00"
-        val duration = musicService?.getDuration() ?: 0
-        binding.totalTimeTextView.text = formatDuration(duration.toLong())
     }
 
-    private fun toggleFullscreen() {
-        isFullscreen = !isFullscreen
-        if (isFullscreen) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-            binding.topBar.visibility = View.GONE
-            binding.bottomBar.visibility = View.GONE
-        } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-            binding.topBar.visibility = View.VISIBLE
-            binding.bottomBar.visibility = View.VISIBLE
-        }
+    override fun updatePlayPauseButton(isPlaying: Boolean) {
+        binding.playPauseButton.setImageResource(
+            if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
+        )
     }
 
-    private fun formatDuration(duration: Long): String {
-        val minutes = TimeUnit.MILLISECONDS.toMinutes(duration)
-        val seconds = TimeUnit.MILLISECONDS.toSeconds(duration) -
-                TimeUnit.MINUTES.toSeconds(minutes)
-        return String.format("%02d:%02d", minutes, seconds)
+    override fun updateSeekBar(progress: Int, duration: Int) {
+        binding.seekBar.progress = progress
     }
 
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        if (isFullscreen) {
-            binding.topBar.visibility = View.GONE
-            binding.bottomBar.visibility = View.GONE
-        }
+    override fun updateTime(currentTime: String, totalTime: String) {
+        binding.currentTimeTextView.text = currentTime
+        binding.totalTimeTextView.text = totalTime
     }
 
-    override fun onBackPressed() {
-        // Stop playback when going back
-        musicService?.stopPlayback()
-        super.onBackPressed()
+    override fun updateVolume(progress: Int, max: Int) {
+        binding.volumeSeekBar.max = max
+        binding.volumeSeekBar.progress = progress
+        binding.volumeButton.setImageResource(
+            if (progress == 0) R.drawable.ic_volume_off else R.drawable.ic_volume
+        )
     }
 
-    private fun updatePlayPauseButton() {
-        try {
-            val isPlaying = musicService?.isPlaying() == true
-            binding.playPauseButton.setImageResource(
-                if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
-            )
-            Log.d("NowPlayingActivity", "Updated play/pause button - isPlaying: $isPlaying")
-        } catch (e: Exception) {
-            Log.e("NowPlayingActivity", "Error updating play/pause button: ${e.message}")
-        }
+    override fun updateShuffleButton(isEnabled: Boolean) {
+        binding.shuffleButton.alpha = if (isEnabled) 1f else 0.5f
+        binding.shuffleButton.setBackgroundResource(
+            if (isEnabled) R.drawable.shuffle_active_background else android.R.color.transparent
+        )
     }
 
-    private fun updatePlayPauseButton(isPlaying: Boolean) {
-        try {
-            Log.d("NowPlayingActivity", "Updating play/pause button - isPlaying: $isPlaying")
-            binding.playPauseButton.setImageResource(
-                if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
-            )
-        } catch (e: Exception) {
-            Log.e("NowPlayingActivity", "Error updating play/pause button: ${e.message}")
-        }
+    override fun showError(error: String) {
+        Toast.makeText(this, error, Toast.LENGTH_SHORT).show()
+    }
+
+    override fun finishActivity() {
+        finish()
     }
 }
