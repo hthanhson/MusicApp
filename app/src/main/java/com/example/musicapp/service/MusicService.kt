@@ -21,8 +21,6 @@ class MusicService : Service() {
     private var onPreparedListener: (() -> Unit)? = null
     private var onProgressUpdateListener: ((Int, Int) -> Unit)? = null
     private var onTrackChangedListener: ((Track) -> Unit)? = null
-
-    // Progress tracking
     private val handler = Handler(Looper.getMainLooper())
     private var isTracking = false
 
@@ -38,7 +36,6 @@ class MusicService : Service() {
 
                     if (isPlaying && totalDuration > 0) {
                         onProgressUpdateListener?.invoke(currentPosition, totalDuration)
-                        // Update playback state during progress update
                         sendBroadcast(Intent(ACTION_PLAYBACK_STATE_CHANGED).apply {
                             putExtra(EXTRA_IS_PLAYING, true)
                             putExtra(EXTRA_TRACK, currentTrack)
@@ -53,9 +50,8 @@ class MusicService : Service() {
                 Log.d("MusicService", "MediaPlayer is null")
             }
 
-            // Continue updating while tracking is enabled
             if (isTracking) {
-                handler.postDelayed(this, 1000) // Update every second
+                handler.postDelayed(this, 1000) 
             } else {
                 Log.d("MusicService", "Tracking is disabled")
             }
@@ -117,7 +113,7 @@ class MusicService : Service() {
         currentTrack = track
         currentTrackIndex = tracks.indexOf(track)
 
-        notifyTrackChanged(track) // Gửi ACTION_TRACK_CHANGED trước khi chuẩn bị MediaPlayer
+        notifyTrackChanged(track)  
 
         val streamUrl = "https://discoveryprovider.audius.co/v1/tracks/${track.id}/stream?app_name=MyMusicApp"
         try {
@@ -200,7 +196,6 @@ class MusicService : Service() {
         } ?: return
 
         Log.d("MusicService", "Playing next track: ${nextTrack.title}")
-        // Notify track change before starting playback
         notifyTrackChanged(nextTrack)
         playTrack(nextTrack)
     }
@@ -215,7 +210,6 @@ class MusicService : Service() {
         }
 
         Log.d("MusicService", "Playing previous track: ${previousTrack.title}")
-        // Notify track change before starting playback
         notifyTrackChanged(previousTrack)
         playTrack(previousTrack)
     }

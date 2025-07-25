@@ -36,7 +36,6 @@ class NowPlayingPresenter(
             setupMusicService()
 
             musicService?.getCurrentTrack()?.let { serviceTrack ->
-                // Đồng bộ với bài hát hiện tại từ MusicService
                 currentTrack = serviceTrack
                 currentTrackIndex = tracks.indexOf(serviceTrack)
                 if (currentTrackIndex == -1) {
@@ -46,7 +45,6 @@ class NowPlayingPresenter(
                 view.updateTrackUI(serviceTrack)
                 val isPlaying = musicService?.isPlaying() == true
                 view.updatePlayPauseButton(isPlaying)
-                // Cập nhật SeekBar và thời gian
                 val duration = musicService?.getDuration() ?: 0
                 val position = musicService?.getCurrentPosition() ?: 0
                 view.updateSeekBar(
@@ -57,16 +55,14 @@ class NowPlayingPresenter(
                     formatDuration(position.toLong()),
                     formatDuration(duration.toLong())
                 )
-                // Bắt đầu cập nhật tiến trình ngay lập tức
                 startProgressUpdate()
             } ?: run {
-                // Nếu không có bài hát đang phát, phát bài hát được truyền vào
+
                 currentTrack?.let { track ->
                     musicService?.setTracks(tracks)
                     musicService?.playTrack(track)
                     view.updateTrackUI(track)
-                    view.updatePlayPauseButton(true) // Giả định bài hát sẽ bắt đầu phát
-                    // Cập nhật SeekBar và thời gian sẽ được xử lý trong onPrepared
+                    view.updatePlayPauseButton(true) 
                 }
             }
         }
@@ -148,14 +144,12 @@ class NowPlayingPresenter(
         tracks = tracksList.toMutableList()
         currentTrackIndex = tracks.indexOf(track)
 
-        // Bind to MusicService
         context.bindService(
             Intent(context, MusicService::class.java),
             serviceConnection,
             Context.BIND_AUTO_CREATE
         )
 
-        // Register BroadcastReceiver
         val receiverFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             Context.RECEIVER_NOT_EXPORTED
         } else {
@@ -176,15 +170,12 @@ class NowPlayingPresenter(
             Log.e("NowPlayingPresenter", "Error registering receiver: ${e.message}")
         }
 
-        // Initialize UI
         view.updateTrackUI(track)
-        // Không gọi updatePlayPauseButton ở đây, chờ MusicService bind
         view.updateSeekBar(0, 0)
         view.updateTime("00:00", "00:00")
     }
 
     fun onResume() {
-        // Đăng ký lại BroadcastReceiver
         val receiverFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             Context.RECEIVER_NOT_EXPORTED
         } else {
@@ -297,7 +288,6 @@ class NowPlayingPresenter(
                                     view.updatePlayPauseButton(service.isPlaying())
                                 }
                             }
-                            // Cập nhật trạng thái play/pause trong mỗi lần kiểm tra
                             view.updatePlayPauseButton(service.isPlaying())
                         } ?: run {
                             view.updatePlayPauseButton(false)
@@ -333,9 +323,8 @@ class NowPlayingPresenter(
                 if (duration > 0) {
                     view.updateTime("00:00", formatDuration(duration.toLong()))
                 }
-                view.updatePlayPauseButton(true) // Cập nhật nút pause khi MediaPlayer sẵn sàng
+                view.updatePlayPauseButton(true)  
                 view.updateSeekBar(0, duration)
-                // Đảm bảo progress update bắt đầu
                 startProgressUpdate()
             },
             onProgressUpdate = { position, duration ->
@@ -411,7 +400,7 @@ class NowPlayingPresenter(
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
         val isMuted = audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) == 0
         if (isMuted) {
-            audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, 5, 0) // Default volume
+            audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, 5, 0)
             view.updateVolume(5, audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC))
         } else {
             audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, 0, 0)

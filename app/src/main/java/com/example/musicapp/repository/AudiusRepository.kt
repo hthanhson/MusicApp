@@ -10,7 +10,7 @@ import java.net.URL
 
 class AudiusRepository {
     private var apiService: AudiusApiService? = null
-    private var baseUrl: String = "https://discoveryprovider.audius.co/" // Ưu tiên node hoạt động
+    private var baseUrl: String = "https://discoveryprovider.audius.co/"
     private val fallbackNodes = listOf(
         "https://discoveryprovider.audius.co/",
         "https://audius-discovery-1.cultur3stake.com/",
@@ -32,7 +32,6 @@ class AudiusRepository {
             apiService = retrofit.create(AudiusApiService::class.java)
         } catch (e: Exception) {
             Log.e("AudiusRepository", "Error initializing API service: ${e.message}")
-            // Không throw exception ở đây, để xử lý lỗi khi gọi API
         }
     }
 
@@ -43,7 +42,7 @@ class AudiusRepository {
             try {
                 val connection = URL("$node/v1/health").openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
-                connection.connectTimeout = 5000 // Giảm timeout xuống 5 giây
+                connection.connectTimeout = 5000 
                 connection.readTimeout = 5000
                 connection.connect()
 
@@ -67,7 +66,6 @@ class AudiusRepository {
 
     suspend fun searchTracks(query: String): Result<List<Track>> {
         return try {
-            // Nếu apiService chưa được khởi tạo, thử khởi tạo lại
             if (apiService == null) {
                 initializeApiService()
             }

@@ -44,8 +44,6 @@ class NowPlayingActivity : AppCompatActivity(), NowPlayingView {
         setupControls()
         setupSeekBar()
         setupVolumeControl()
-
-        // Setup back button
         binding.backButton.setOnClickListener {
             finish()
         }
@@ -75,7 +73,6 @@ class NowPlayingActivity : AppCompatActivity(), NowPlayingView {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // Handle fullscreen mode if needed
     }
 
     override fun onBackPressed() {

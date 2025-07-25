@@ -49,7 +49,6 @@ class MainActivity : AppCompatActivity(), MainView {
                         stopPlayback()
                     }
                     else -> {
-                        // Do nothing for unknown actions
                     }
                 }
             }
