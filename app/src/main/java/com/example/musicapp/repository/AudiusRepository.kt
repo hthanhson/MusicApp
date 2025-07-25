@@ -1,6 +1,8 @@
-package com.example.musicapp.model
+package com.example.musicapp.repository
 
 import android.util.Log
+import com.example.musicapp.model.Track
+import com.example.musicapp.service.AudiusApiService
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.net.HttpURLConnection
@@ -36,7 +38,7 @@ class AudiusRepository {
 
     private fun selectDiscoveryNode() {
         var selectedNode: String? = null
-        
+
         for (node in fallbackNodes) {
             try {
                 val connection = URL("$node/v1/health").openConnection() as HttpURLConnection
@@ -44,7 +46,7 @@ class AudiusRepository {
                 connection.connectTimeout = 5000 // Giảm timeout xuống 5 giây
                 connection.readTimeout = 5000
                 connection.connect()
-                
+
                 if (connection.responseCode == 200) {
                     selectedNode = node
                     Log.d("AudiusRepository", "Selected active node: $node")
@@ -71,10 +73,10 @@ class AudiusRepository {
             }
 
             val service = apiService ?: throw Exception("Không thể kết nối đến API")
-            
+
             Log.d("AudiusRepository", "Searching tracks for query: $query with baseUrl: $baseUrl")
             val response = service.searchTracks(query, "MyMusicApp")
-            
+
             if (response.data.isEmpty()) {
                 Log.w("AudiusRepository", "No tracks found for query: $query")
             }

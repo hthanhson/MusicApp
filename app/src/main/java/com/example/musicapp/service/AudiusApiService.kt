@@ -1,7 +1,7 @@
-package com.example.musicapp.model
+package com.example.musicapp.service
 
+import com.example.musicapp.response.AudiusResponse
 import retrofit2.http.GET
-import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface AudiusApiService {
@@ -11,8 +11,3 @@ interface AudiusApiService {
         @Query("app_name") appName: String
     ): AudiusResponse
 }
-
-
-
-
-

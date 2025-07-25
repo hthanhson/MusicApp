@@ -1,7 +1,7 @@
 package com.example.musicapp.presenter
 
 import android.util.Log
-import com.example.musicapp.model.AudiusRepository
+import com.example.musicapp.repository.AudiusRepository
 import com.example.musicapp.model.Track
 import com.example.musicapp.view.MainView
 import kotlinx.coroutines.CoroutineScope
