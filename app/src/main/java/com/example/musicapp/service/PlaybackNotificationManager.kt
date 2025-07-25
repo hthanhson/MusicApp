@@ -35,7 +35,7 @@ class PlaybackNotificationManager(private val context: Context) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Music Playback",
-                NotificationManager.IMPORTANCE_HIGH
+                NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = "Controls for music playback"
                 setShowBadge(true)
@@ -46,7 +46,7 @@ class PlaybackNotificationManager(private val context: Context) {
                 setBypassDnd(true)
             }
             notificationManager.createNotificationChannel(channel)
-            Log.d("MusicNotificationManager", "Notification channel created with HIGH importance")
+            Log.d("MusicNotificationManager", "Notification channel created with DEFAULT importance")
         }
     }
     
@@ -69,12 +69,11 @@ class PlaybackNotificationManager(private val context: Context) {
             .setOngoing(isPlaying)
             .setAutoCancel(false)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setShowWhen(false)
             .setColorized(true)
             .setDeleteIntent(createPendingIntent(ACTION_CLOSE))
-            .setFullScreenIntent(contentPendingIntent, false)
         builder.addAction(
             R.drawable.ic_skip_previous,
             "",
@@ -101,7 +100,7 @@ class PlaybackNotificationManager(private val context: Context) {
         
         val notification = builder.build()
         notification.flags = notification.flags or Notification.FLAG_NO_CLEAR
-        Log.d("MusicNotificationManager", "Notification created successfully with HIGH priority")
+        Log.d("MusicNotificationManager", "Notification created successfully with DEFAULT priority")
         return notification
     }
     
