@@ -23,6 +23,7 @@ class MusicService : Service() {
     private var onTrackChangedListener: ((Track) -> Unit)? = null
     private val handler = Handler(Looper.getMainLooper())
     private var isTracking = false
+    private var suppressNotification = false
     
     // Notification manager
     private lateinit var notificationManager: PlaybackNotificationManager
@@ -38,6 +39,8 @@ class MusicService : Service() {
         const val ACTION_PREVIOUS = "com.example.musicapp.ACTION_PREVIOUS"
         const val ACTION_NEXT = "com.example.musicapp.ACTION_NEXT"
         const val ACTION_STOP = "com.example.musicapp.ACTION_STOP"
+        const val ACTION_HIDE_NOTIFICATION = "com.example.musicapp.ACTION_HIDE_NOTIFICATION"
+        const val ACTION_SHOW_NOTIFICATION = "com.example.musicapp.ACTION_SHOW_NOTIFICATION"
     }
 
     override fun onCreate() {
@@ -62,6 +65,15 @@ class MusicService : Service() {
                 }
                 ACTION_NEXT -> {
                     playNextTrack()
+                }
+                ACTION_HIDE_NOTIFICATION -> {
+                    stopForeground(false)
+                    notificationManager.hideNotification()
+                    suppressNotification = true
+                }
+                ACTION_SHOW_NOTIFICATION -> {
+                    suppressNotification = false
+                    if (isPlaying()) updateNotification()
                 }
                 ACTION_STOP -> {
                     stopPlayback()
@@ -197,7 +209,9 @@ class MusicService : Service() {
 
                     if (isPlaying && totalDuration > 0) {
                         onProgressUpdateListener?.invoke(currentPosition, totalDuration)
-                        updateNotification(currentPosition, totalDuration)
+                        if (!suppressNotification) {
+                            updateNotification(currentPosition, totalDuration)
+                        }
                         sendBroadcast(Intent(ACTION_PLAYBACK_STATE_CHANGED).apply {
                             putExtra(EXTRA_IS_PLAYING, true)
                             putExtra(EXTRA_TRACK, currentTrack)
@@ -388,6 +402,7 @@ class MusicService : Service() {
     }
 
     private fun updateNotification(progressMs: Int? = null, durationMs: Int? = null) {
+        if (suppressNotification) return
         currentTrack?.let { track ->
             val playing = isPlaying()
             val progressPercent = if (progressMs != null && durationMs != null && durationMs > 0) {

@@ -19,7 +19,8 @@ import com.example.musicapp.model.Track
 class MusicNotificationManager(private val context: Context) {
     
     companion object {
-        const val CHANNEL_ID = "music_playback_channel"
+        // New channel id with LOW importance to suppress heads-up popups
+        const val CHANNEL_ID = "music_playback_silent"
         const val NOTIFICATION_ID = 1001
         const val ACTION_PLAY_PAUSE = "com.example.musicapp.ACTION_PLAY_PAUSE"
         const val ACTION_PREVIOUS = "com.example.musicapp.ACTION_PREVIOUS"
@@ -37,8 +38,8 @@ class MusicNotificationManager(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Music Playback",
-                NotificationManager.IMPORTANCE_LOW
+                "Music Playback (Silent)",
+                NotificationManager.IMPORTANCE_MIN
             ).apply {
                 description = "Controls for music playback"
                 setShowBadge(false)
@@ -48,7 +49,7 @@ class MusicNotificationManager(private val context: Context) {
         }
     }
     
-    @SuppressLint("RemoteViewLayout")
+//    @SuppressLint("RemoteViewLayout")
     fun createNotification(track: Track?, isPlaying: Boolean, progress: Int = 0): Notification {
         val notificationLayout = RemoteViews(context.packageName, R.layout.notification_music_player)
         
@@ -94,7 +95,8 @@ class MusicNotificationManager(private val context: Context) {
             .setOngoing(isPlaying)
             .setAutoCancel(false)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setSilent(true)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setDeleteIntent(createPendingIntent(ACTION_CLOSE))
             .build()
